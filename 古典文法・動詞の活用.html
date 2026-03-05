@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>古典文法・動詞の活用</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Hiragino Kaku Gothic ProN", "Noto Sans JP", "游ゴシック体", "Yu Gothic", Meiryo, sans-serif; line-height: 1.6; }
+    #question { font-size: 1.2rem; font-weight: 700; }
+    fieldset { border: 1px solid #bbb; border-radius: 6px; padding: .5rem .75rem; }
+  </style>
+</head>
+<body>
+  <h1>古典文法・動詞の活用</h1>
+
+  <fieldset>
+    <legend>出題モード</legend>
+    <label><input type="radio" name="mode" value="type" checked>活用の種類を答える</label><br>
+    <label><input type="radio" name="mode" value="form">活用形を答える</label>
+  </fieldset>
+
+  <div id="formPicker" style="display:none">
+    出題する活用形：
+    <label><input type="checkbox" class="formChoice" value="未然形" checked>未然形</label>
+    <label><input type="checkbox" class="formChoice" value="連用形" checked>連用形</label>
+    <label><input type="checkbox" class="formChoice" value="終止形" checked>終止形</label>
+    <label><input type="checkbox" class="formChoice" value="連体形" checked>連体形</label>
+    <label><input type="checkbox" class="formChoice" value="已然形" checked>已然形</label>
+    <label><input type="checkbox" class="formChoice" value="命令形" checked>命令形</label>
+  </div>
+
+  <p id="question">「ランダム出題」を押してください</p>
+  <p id="hint" style="color:#444"></p>
+
+  <button id="askBtn">ランダム出題</button>
+  <button id="nextBtn" disabled>次の問題へ</button>
+
+  <form id="answerForm" autocomplete="off" style="margin-top:8px">
+    <input id="answer" type="text" style="min-width:min(90vw,28rem)" placeholder="活用の種類を入力">
+    <button type="submit">送信</button>
+  </form>
+
+  <p id="result"></p>
+  <p id="correct"></p>
+
+  <h2>入力のルール</h2>
+  <ul>
+    <li>動詞の活用種別は「四段・上二段・下二段・上一段・下一段・カ行変格・サ行変格・ナ行変格・ラ行変格」の9種とします。</li>
+    <li><strong>活用の種類</strong>：たとえば、動詞「行く」の活用の種類はカ行四段活用なので、「カ行四段」と回答してください。</li>
+    <li><strong>活用形</strong>：たとえば、「行くの未然形」は「行か（ず）」なので、<strong>活用語尾</strong>を<strong>歴史的仮名遣い・ひらがな</strong>で「か」と回答してください。<br>「沃るの已然形」のように語幹と活用語尾の区別のない動詞は、「いれ」のように活用形をすべて答えてください。</li>
+  </ul>
+
+  <script>
+    // ===== データ =====
+    // 形式： { base:"語の基本形(終止形)", kana:"かな", class:"活用の種類", forms:{未然形:"…", 連用形:"…", 終止形:"…", 連体形:"…", 已然形:"…", 命令形:"…"} }
+    // 歴史的仮名遣いで記載。
+    const VERBS = [
+      // 四段（代表的な語をいくつか）
+      {base:"書く", kana:"かく", class:"カ行四段", forms:{未然形:"か", 連用形:"き", 終止形:"く", 連体形:"く", 已然形:"け", 命令形:"け"}},
+      {base:"漕ぐ", kana:"こぐ", class:"ガ行四段", forms:{未然形:"が", 連用形:"ぎ", 終止形:"ぐ", 連体形:"ぐ", 已然形:"げ", 命令形:"げ"}},
+      {base:"押す", kana:"おす", class:"サ行四段", forms:{未然形:"さ", 連用形:"し", 終止形:"す", 連体形:"す", 已然形:"せ", 命令形:"せ"}},
+      {base:"打つ", kana:"うつ", class:"タ行四段", forms:{未然形:"た", 連用形:"ち", 終止形:"つ", 連体形:"つ", 已然形:"て", 命令形:"て"}},
+      {base:"思ふ", kana:"おもふ", class:"ハ行四段", forms:{未然形:"は", 連用形:"ひ", 終止形:"ふ", 連体形:"ふ", 已然形:"へ", 命令形:"へ"}},
+      {base:"読む", kana:"よむ", class:"マ行四段", forms:{未然形:"ま", 連用形:"み", 終止形:"む", 連体形:"む", 已然形:"め", 命令形:"め"}},
+      {base:"取る", kana:"とる", class:"ラ行四段", forms:{未然形:"ら", 連用形:"り", 終止形:"る", 連体形:"る", 已然形:"れ", 命令形:"れ"}},
+
+      // 上二段
+      {base:"起く", kana:"おく", class:"カ行上二段", forms:{未然形:"き", 連用形:"き", 終止形:"く", 連体形:"くる", 已然形:"くれ", 命令形:"きよ"}},
+      {base:"過ぐ", kana:"すぐ", class:"ガ行上二段", forms:{未然形:"ぎ", 連用形:"ぎ", 終止形:"ぐ", 連体形:"ぐる", 已然形:"ぐれ", 命令形:"ぎよ"}},
+      {base:"落つ", kana:"おつ", class:"タ行上二段", forms:{未然形:"ち", 連用形:"ち", 終止形:"つ", 連体形:"つる", 已然形:"つれ", 命令形:"ちよ"}},
+      {base:"恥づ", kana:"はづ", class:"ダ行上二段", forms:{未然形:"ぢ", 連用形:"ぢ", 終止形:"づ", 連体形:"づる", 已然形:"づれ", 命令形:"ぢよ"}},
+      {base:"生ふ", kana:"おふ", class:"ハ行上二段", forms:{未然形:"ひ", 連用形:"ひ", 終止形:"ふ", 連体形:"ふる", 已然形:"ふれ", 命令形:"ひよ"}},
+      {base:"帯ぶ", kana:"おぶ", class:"バ行上二段", forms:{未然形:"ば", 連用形:"び", 終止形:"ぶ", 連体形:"ぶる", 已然形:"ぶれ", 命令形:"びよ"}},
+      {base:"老ゆ", kana:"おゆ", class:"ヤ行上二段", forms:{未然形:"い", 連用形:"い", 終止形:"ゆ", 連体形:"ゆる", 已然形:"ゆれ", 命令形:"いよ"}},
+      {base:"古る", kana:"ふる", class:"ラ行上二段", forms:{未然形:"り", 連用形:"り", 終止形:"る", 連体形:"るる", 已然形:"るれ", 命令形:"りよ"}},
+
+      // 下二段
+      {base:"得", kana:"う", class:"ア行下二段", forms:{未然形:"え", 連用形:"え", 終止形:"う", 連体形:"うる", 已然形:"うれ", 命令形:"えよ"}},
+      {base:"受く", kana:"うく", class:"カ行下二段", forms:{未然形:"け", 連用形:"け", 終止形:"く", 連体形:"くる", 已然形:"くれ", 命令形:"けよ"}},
+      {base:"告ぐ", kana:"つぐ", class:"ガ行下二段", forms:{未然形:"げ", 連用形:"げ", 終止形:"ぐ", 連体形:"ぐる", 已然形:"ぐれ", 命令形:"げよ"}},
+      {base:"寄す", kana:"よす", class:"サ行下二段", forms:{未然形:"せ", 連用形:"せ", 終止形:"す", 連体形:"する", 已然形:"すれ", 命令形:"せよ"}},
+      {base:"混ず", kana:"まず", class:"ザ行下二段", forms:{未然形:"ぜ", 連用形:"ぜ", 終止形:"ず", 連体形:"ずる", 已然形:"ずれ", 命令形:"ぜよ"}},
+      {base:"果つ", kana:"はつ", class:"タ行下二段", forms:{未然形:"て", 連用形:"て", 終止形:"つ", 連体形:"つる", 已然形:"つれ", 命令形:"てよ"}},
+      {base:"愛づ", kana:"めづ", class:"ダ行下二段", forms:{未然形:"で", 連用形:"で", 終止形:"づ", 連体形:"づる", 已然形:"づれ", 命令形:"でよ"}},
+      {base:"寝", kana:"ぬ", class:"ナ行下二段", forms:{未然形:"ね", 連用形:"ね", 終止形:"ぬ", 連体形:"ぬる", 已然形:"ぬれ", 命令形:"ねよ"}},
+      {base:"経", kana:"ふ", class:"ハ行下二段", forms:{未然形:"へ", 連用形:"へ", 終止形:"ふ", 連体形:"ふる", 已然形:"ふれ", 命令形:"へよ"}},
+      {base:"述ぶ", kana:"のぶ", class:"バ行下二段", forms:{未然形:"べ", 連用形:"べ", 終止形:"ぶ", 連体形:"ぶる", 已然形:"ぶれ", 命令形:"べよ"}},
+      {base:"誉む", kana:"ほむ", class:"マ行下二段", forms:{未然形:"め", 連用形:"め", 終止形:"む", 連体形:"むる", 已然形:"むれ", 命令形:"めよ"}},
+      {base:"越ゆ", kana:"こゆ", class:"ヤ行下二段", forms:{未然形:"え", 連用形:"え", 終止形:"ゆ", 連体形:"ゆる", 已然形:"ゆれ", 命令形:"えよ"}},
+      {base:"枯る", kana:"かる", class:"ラ行下二段", forms:{未然形:"れ", 連用形:"れ", 終止形:"る", 連体形:"るる", 已然形:"るれ", 命令形:"れよ"}},
+      {base:"据う", kana:"すう", class:"ワ行下二段", forms:{未然形:"ゑ", 連用形:"ゑ", 終止形:"う", 連体形:"うる", 已然形:"うれ", 命令形:"ゑよ"}},
+
+      // 上一段（ひいきにみゐる）
+      {base:"見る", kana:"みる", class:"マ行上一段", forms:{未然形:"み", 連用形:"み", 終止形:"みる", 連体形:"みる", 已然形:"みれ", 命令形:"みよ"}},
+      {base:"着る", kana:"きる", class:"カ行上一段", forms:{未然形:"き", 連用形:"き", 終止形:"きる", 連体形:"きる", 已然形:"きれ", 命令形:"きよ"}},
+      {base:"似る", kana:"にる", class:"ナ行上一段", forms:{未然形:"に", 連用形:"に", 終止形:"にる", 連体形:"にる", 已然形:"にれ", 命令形:"によ"}},
+      {base:"煮る", kana:"にる", class:"ナ行上一段", forms:{未然形:"に", 連用形:"に", 終止形:"にる", 連体形:"にる", 已然形:"にれ", 命令形:"によ"}},
+      {base:"射る", kana:"いる", class:"ヤ行上一段", forms:{未然形:"い", 連用形:"い", 終止形:"いる", 連体形:"いる", 已然形:"いれ", 命令形:"いよ"}},
+      {base:"鋳る", kana:"いる", class:"ヤ行上一段", forms:{未然形:"い", 連用形:"い", 終止形:"いる", 連体形:"いる", 已然形:"いれ", 命令形:"いよ"}},
+      {base:"干る", kana:"ひる", class:"ハ行上一段", forms:{未然形:"ひ", 連用形:"ひ", 終止形:"ひる", 連体形:"ひる", 已然形:"ひれ", 命令形:"ひよ"}},
+      {base:"居る", kana:"ゐる", class:"ワ行上一段", forms:{未然形:"ゐ", 連用形:"ゐ", 終止形:"ゐる", 連体形:"ゐる", 已然形:"ゐれ", 命令形:"ゐよ"}},
+      {base:"率る", kana:"ゐる", class:"ワ行上一段", forms:{未然形:"ゐ", 連用形:"ゐ", 終止形:"ゐる", 連体形:"ゐる", 已然形:"ゐれ", 命令形:"ゐよ"}},
+
+      // 下一段（蹴るのみ）
+      {base:"蹴る", kana:"ける", class:"カ行下一段", forms:{未然形:"け", 連用形:"け", 終止形:"ける", 連体形:"ける", 已然形:"けれ", 命令形:"けよ"}},
+
+      // 変格
+      {base:"来", kana:"く", class:"カ行変格", forms:{未然形:"こ", 連用形:"き", 終止形:"く", 連体形:"くる", 已然形:"くれ", 命令形:"こ"}},
+      {base:"出で来", kana:"いでく", class:"カ行変格", forms:{未然形:"こ", 連用形:"き", 終止形:"く", 連体形:"くる", 已然形:"くれ", 命令形:"こ"}},
+      {base:"為", kana:"す", class:"サ行変格", forms:{未然形:"せ", 連用形:"し", 終止形:"す", 連体形:"する", 已然形:"すれ", 命令形:"せよ"}},
+      {base:"おはす", kana:"おはす", class:"サ行変格", forms:{未然形:"せ", 連用形:"し", 終止形:"す", 連体形:"する", 已然形:"すれ", 命令形:"せよ"}},
+      {base:"甘んず", kana:"あまんず", class:"サ行変格", forms:{未然形:"ぜ", 連用形:"じ", 終止形:"ず", 連体形:"ずる", 已然形:"ずれ", 命令形:"ぜよ"}},
+      {base:"恋す", kana:"こいす", class:"サ行変格", forms:{未然形:"せ", 連用形:"し", 終止形:"す", 連体形:"する", 已然形:"すれ", 命令形:"せよ"}},
+      {base:"死ぬ", kana:"しぬ", class:"ナ行変格", forms:{未然形:"な", 連用形:"に", 終止形:"ぬ", 連体形:"ぬる", 已然形:"ぬれ", 命令形:"ね"}},
+      {base:"往ぬ / 去ぬ", kana:"いぬ", class:"ナ行変格", forms:{未然形:"な", 連用形:"に", 終止形:"ぬ", 連体形:"ぬる", 已然形:"ぬれ", 命令形:"ね"}},
+      {base:"有り", kana:"あり", class:"ラ行変格", forms:{未然形:"ら", 連用形:"り", 終止形:"り", 連体形:"る", 已然形:"れ", 命令形:"れ"}},
+      {base:"をり", kana:"をり", class:"ラ行変格", forms:{未然形:"ら", 連用形:"り", 終止形:"り", 連体形:"る", 已然形:"れ", 命令形:"れ"}},
+      {base:"待り", kana:"はべり", class:"ラ行変格", forms:{未然形:"ら", 連用形:"り", 終止形:"り", 連体形:"る", 已然形:"れ", 命令形:"れ"}},
+      {base:"いますがり", kana:"いますがり", class:"ラ行変格", forms:{未然形:"ら", 連用形:"り", 終止形:"り", 連体形:"る", 已然形:"れ", 命令形:"れ"}}
+    ];
+
+    // ===== ユーティリティ =====
+    function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+    function normalizeKana(s){
+      if(!s) return "";
+      s = s.trim().toLowerCase();
+      // 全角スペース→半角、連続空白→1
+      s = s.replace(/　/g, ' ').replace(/\s+/g,' ');
+      // 小書き・濁点のゆれ最低限吸収（歴史仮名はそのまま）
+      return s;
+    }
+
+    // ===== 状態 =====
+    let current = null; // 出題中の動詞レコード
+    let currentForm = null; // formモードで問う活用形のキー
+
+    const els = {
+      mode: () => document.querySelector('input[name="mode"]:checked')?.value || 'type',
+      formPicker: document.getElementById('formPicker'),
+      askBtn: document.getElementById('askBtn'),
+      nextBtn: document.getElementById('nextBtn'),
+      q: document.getElementById('question'),
+      hint: document.getElementById('hint'),
+      form: document.getElementById('answerForm'),
+      ans: document.getElementById('answer'),
+      result: document.getElementById('result'),
+      correct: document.getElementById('correct')
+    };
+
+    // モード切替で活用形選択UIの表示切替
+    document.querySelectorAll('input[name="mode"]').forEach(r=>{
+      r.addEventListener('change', ()=>{
+        const m = els.mode();
+        els.formPicker.style.display = (m === 'form') ? 'block' : 'none';
+        els.ans.placeholder = (m === 'type') ? '活用の種類を入力' : '活用形を入力';
+      });
+    });
+
+    function getEnabledForms(){
+      return Array.from(document.querySelectorAll('.formChoice:checked')).map(el=>el.value);
+    }
+
+    function ask(){
+      els.result.textContent = '';
+      els.correct.textContent = '';
+      els.hint.textContent = '';
+      current = pick(VERBS);
+      const mode = els.mode();
+      if(mode === 'type'){
+        els.q.textContent = `「${current.base}（${current.kana}）」の活用の種類`;
+      } else {
+        const enabled = getEnabledForms();
+        const candidates = enabled.length? enabled : ["未然形","連用形","終止形","連体形","已然形","命令形"];
+        currentForm = pick(candidates);
+        els.q.textContent = `「${current.base}（${current.kana}）」の${currentForm} `;
+      }
+      els.ans.value = '';
+      els.ans.focus();
+      els.nextBtn.disabled = true;
+    }
+
+    function judge(){
+      if(!current) return;
+      const mode = els.mode();
+      const user = normalizeKana(els.ans.value);
+      if(mode === 'type'){
+        const ok = user && (user === normalizeKana(current.class));
+        if(ok){
+          els.result.textContent = '正解！';
+        } else {
+          els.result.textContent = '不正解…';
+          els.correct.textContent = `正答：${current.class}活用`;
+        }
+      } else {
+        const expected = normalizeKana(current.forms[currentForm]);
+        const ok = user && (user === expected);
+        if(ok){
+          els.result.textContent = '正解！';
+        } else {
+          els.result.textContent = '不正解…';
+          els.correct.textContent = `正答（${currentForm}）：${current.forms[currentForm]}`;
+        }
+      }
+      els.nextBtn.disabled = false;
+    }
+
+    els.askBtn.addEventListener('click', ask);
+    els.nextBtn.addEventListener('click', ask);
+    els.form.addEventListener('submit', (e)=>{ e.preventDefault(); judge(); });
+
+    // Enterで次へ（判定済みのとき）
+    document.addEventListener('keydown', (e)=>{
+      if(e.key === 'Enter' && !els.nextBtn.disabled){ e.preventDefault(); ask(); }
+    });
+  </script>
+</body>
+</html>

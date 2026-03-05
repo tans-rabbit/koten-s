@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>百人一首</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Hiragino Kaku Gothic ProN", "Noto Sans JP", "游ゴシック体", "Yu Gothic", Meiryo, sans-serif; line-height: 1.6; }
+    fieldset { border: 1px solid #bbb; border-radius: 6px; padding: .5rem .75rem; }
+    legend { font-weight: 600; }
+    #question { font-size: 1.2rem; font-weight: 700; }
+    #hint { color: #444; }
+    .muted { color: #666; font-size: .92rem; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+  </style>
+</head>
+<body>
+  <h1>百人一首</h1>
+
+  <!-- ▼ 出題範囲 UI -->
+  <div id="rangeBox" style="margin: 8px 0;">
+    出題範囲：
+    <label>開始 <input id="rangeFrom" type="number" min="1" max="100" value="1" style="width:4em;"></label>
+    〜
+    <label>終了 <input id="rangeTo" type="number" min="1" max="100" value="100" style="width:4em;"></label>
+  </div>
+
+  <!-- ▼ モード選択 -->
+  <fieldset id="modeBox" style="margin: 8px 0;">
+    <legend>出題モード</legend>
+    <label><input type="radio" name="mode" value="full" checked> 全文</label>
+    <label style="margin-left:1em;"><input type="radio" name="mode" value="part"> 一部</label>
+    <label style="margin-left:1em;"><input type="radio" name="mode" value="author"> 作者名</label>
+    <span id="partPicker" style="margin-left: 8px; display:none;">
+      句の指定：
+      <select id="partSelect">
+        <option value="rand">ランダム</option>
+        <option value="1">第1句（5）</option>
+        <option value="2">第2句（7）</option>
+        <option value="3">第3句（5）</option>
+        <option value="4">第4句（7）</option>
+        <option value="5">第5句（7）</option>
+      </select>
+    </span>
+  </fieldset>
+
+  <!-- ▼ 出題表示 -->
+  <p id="question">「ランダム出題」を押してください</p>
+  <p id="hint" class="muted"></p>
+
+  <!-- ▼ 操作 -->
+  <button id="askBtn">ランダム出題</button>
+  <button id="nextBtn" disabled>次の問題へ</button>
+
+  <!-- ▼ 回答フォーム -->
+  <form id="form" autocomplete="off" style="margin-top: 8px;">
+    <input id="answer" type="text" style="min-width: min(90vw, 28rem);" placeholder="和歌の全文を入力">
+    <button type="submit">送信</button>
+  </form>
+
+  <!-- ▼ 判定表示 -->
+  <p id="result"></p>
+  <p id="correct"></p>
+
+  <h2>入力のルール</h2>
+  <ul>
+    <li><strong>全文・一部</strong>：<u>ひらがな・歴史的仮名遣い</u>で入力。区切りにはスペース（全角/半角どちらでも）を使用。<strong>完全一致で判定します。</strong></li>
+    <li><strong>作者名</strong>：<u>漢字</u>で入力。よくある表記ゆれ（例：菅家↔菅原道真）はどちらでも正解にしています。</li>
+  </ul>
+
+  <script>
+  // ======= 正答データ（歴史的仮名遣い）====================================
+  // 形式： poem number -> "上の句(5) 上の句(7) 上の句(5) 下の句(7) 下の句(7)"
+  const ANSWERS = {
+    1: "あきのたの かりほのいほの とまをあらみ わがころもでは つゆにぬれつつ",
+    2: "はるすぎて なつきにけらし しろたへの ころもほすてふ あまのかぐやま",
+    3: "あしびきの やまどりのをの しだりをの ながながしよを ひとりかもねむ",
+    4: "たごのうらに うちいでてみれば しろたへの ふじのたかねに ゆきはふりつつ",
+    5: "おくやまに もみぢふみわけ なくしかの こゑきくときぞ あきはかなしき",
+    6: "かささぎの わたせるはしに おくしもの しろきをみれば よぞふけにける",
+    7: "あまのはら ふりさけみれば かすがなる みかさのやまに いでしつきかも",
+    8: "わがいほは みやこのたつみ しかぞすむ よをうぢやまと ひとはいふなり",
+    9: "はなのいろは うつりにけりな いたづらに わがみよにふる ながめせしまに",
+    10: "これやこの ゆくもかへるも わかれては しるもしらぬも あふさかのせき",
+    11: "わたのはら やそしまかけて こぎいでぬと ひとにはつげよ あまのつりぶね",
+    12: "あまつかぜ くものかよひぢ ふきとぢよ をとめのすがた しばしとどめむ",
+    13: "つくばねの みねよりおつる みなのがは こひぞつもりて ふちとなりぬる",
+    14: "みちのくの しのぶもぢずり たれゆゑに みだれそめにし われならなくに",
+    15: "きみがため はるののにいでて わかなつむ わがころもでに ゆきはふりつつ",
+    16: "たちわかれ いなばのやまの みねにおふる まつとしきかば いまかへりこむ",
+    17: "ちはやぶる かみよもきかず たつたがは からくれなゐに みずくくるとは",
+    18: "すみのえの きしによるなみ よるさへや ゆめのかよひぢ ひとめよくらむ",
+    19: "なにはがた みじかきあしの ふしのまも あはでこのよを すぐしてよとや",
+    20: "わびぬれば いまはたおなじ なにはなる みをつくしても あはむとぞおもふ",
+    21: "いまこむと いひしばかりに ながつきの ありあけのつきを まちいでつるかな",
+    22: "ふくからに あきのくさきの しをるれば むべやまかぜを あらしといふらむ",
+    23: "つきみれば ちぢにものこそ かなしけれ わがみひとつの あきにはあらねど",
+    24: "このたびは ぬさもとりあへず たむけやま もみぢのにしき かみのまにまに",
+    25: "なにしおはば あふさかやまの さねかづら ひとにしられで くるよしもがな",
+    26: "をぐらやま みねのもみぢば こころあらば いまひとたびの みゆきまたなむ",
+    27: "みかのはら わきてながるる いづみがは いつみきとてか こひしかるらむ",
+    28: "やまざとは ふゆぞさびしさ まさりける ひとめもくさも かれぬとおもへば",
+    29: "こころあてに をらばやをらむ はつしもの おきまどはせる しらぎくのはな",
+    30: "ありあけの つれなくみえし わかれより あかつきばかり うきものはなし",
+    31: "あさぼらけ ありあけのつきと みるまでに よしののさとに ふれるしらゆき",
+    32: "やまがはに かぜのかけたる しがらみは ながれもあへぬ もみぢなりけり",
+    33: "ひさかたの ひかりのどけき はるのひに しづこころなく はなのちるらむ",
+    34: "たれをかも しるひとにせむ たかさごの まつもむかしの ともならなくに",
+    35: "ひとはいさ こころもしらず ふるさとは はなぞむかしの かににほひける",
+    36: "なつのよは まだよひながら あけぬるを くものいづこに つきやどるらむ",
+    37: "しらつゆに かぜのふきしく あきののは つらぬきとめぬ たまぞちりける",
+    38: "わすらるる みをばおもはず ちかひてし ひとのいのちの おしくもあるかな",
+    39: "あさぢふの をののしのはら しのぶれど あまりてなどか ひとのこひしき",
+    40: "しのぶれど いろにいでにけり わがこひは ものやおもふと ひとのとふまで",
+    41: "こひすてふ わがなはまだき たちにけり ひとしれずこそ おもひそめしか",
+    42: "ちぎりきな かたみにそでを しぼりつつ すゑのまつやま なみこさじとは",
+    43: "あひみての のちのこころに くらぶれば むかしはものを おもはざりけり",
+    44: "あふことの たえてしなくば なかなかに ひとをもみをも うらみざらまし",
+    45: "あはれとも いふべきひとは おもほえで みのいたづらに なりぬべきかな",
+    46: "ゆらのとを わたるふなびと かぢをたえ ゆくへもしらぬ こひのみちかな",
+    47: "やへむぐら しげれるやどの さびしきに ひとこそみえね あきはきにけり",
+    48: "かぜをいたみ いわうつなみの おのれのみ くだけてものを おもふころかな",
+    49: "みかきもり えじのたくひの よるはもえ ひるはきえつつ ものをこそおもへ",
+    50: "きみがため おしからざりし いのちさへ ながくもがなと おもひけるかな",
+    51: "かくとだに えやはいぶきの さしもぐさ さしもしらじな もゆるおもひを",
+    52: "あけぬれば くるるものとは しりながら なほうらめしき あさぼらけかな",
+    53: "なげきつつ ひとりぬるよの あくるまは いかにひさしき ものとかはしる",
+    54: "わすれじの ゆくすゑまでは かたければ けふをかぎりの いのちともがな",
+    55: "たきのねは たえてひさしく なりぬれど なこそながれて なほきこえけれ",
+    56: "あらざらむ このよのほかの おもひでに いまひとたびの あふこともがな",
+    57: "めぐりあひて みしやそれとも わかぬまに くもがくれにし よはのつきかな",
+    58: "ありまやま ゐなのささはら かぜふけば いでそよひとを わすれやはする",
+    59: "やすらはで ねなましものを さよふけて かたぶくまでの つきをみしかな",
+    60: "おほえやま いくののみちの とほければ まだふみもみず あまのはしだて",
+    61: "いにしへの ならのみやこの やへざくら けふここのへに にほひぬるかな",
+    62: "よをこめて とりのそらねは はかるとも よにあふさかの せきはゆるさじ",
+    63: "いまはただ おもひたえなむ とばかりを ひとづてならで いふよしもがな",
+    64: "あさぼらけ うぢのかはぎり たえだえに あらはれわたる せぜのあじろぎ",
+    65: "うらみわび ほさぬそでだに あるものを こひにくちなむ なこそをしけれ",
+    66: "もろともに あはれとおもへ やまざくら はなよりほかに しるひともなし",
+    67: "はるのよの ゆめばかりなる たまくらに かひなくたたむ なこそをしけれ",
+    68: "こころにも あらでうきよに ながらへば こひしかるべき よはのつきかな",
+    69: "あらしふく みむろのやまの もみぢばは たつたのかはの にしきなりけり",
+    70: "さびしさに やどをたちいでて ながむれば いづこもおなじ あきのゆふぐれ",
+    71: "ゆふされば かどたのいなば おとづれて あしのまろやに あきかぜぞふく",
+    72: "おとにきく たかしのはまの あだなみは かけじやそでの ぬれもこそすれ",
+    73: "たかさごの をのへのさくら さきにけり とやまのかすみ たたずもあらなむ",
+    74: "うかりける ひとをはつせの やまおろしよ はげしかれとは いのらぬものを",
+    75: "ちぎりおきし させもがつゆを いのちにて あはれことしの あきもいぬめり",
+    76: "わたのはら こぎいでてみれば ひさかたの くもゐにまがふ おきつしらなみ",
+    77: "せをはやみ いわにせかるる たきがはの われてもすゑに あはむとぞおもふ",
+    78: "あわぢしま かよふちどりの なくこゑに いくよねざめぬ すまのせきもり",
+    79: "あきかぜに たなびくくもの たえまより もれいづるつきの かげのさやけさ",
+    80: "ながからむ こころもしらず くろかみの みだれてけさは ものをこそおもへ",
+    81: "ほととぎす なきつるかたを ながむれば ただありあけの つきぞのこれる",
+    82: "おもひわび さてもいのちは あるものを うきにたへぬは なみだなりけり",
+    83: "よのなかよ みちこそなけれ おもひいる やまのおくにも しかぞなくなる",
+    84: "ながらへば またこのごろや しのばれむ うしとみしよぞ いまはこひしき",
+    85: "よもすがら ものおもふころは あけやらで ねやのひまさへ つれなりにけり",
+    86: "なげけとて つきやはものを おもはする かこちがほなる わがなみだかな",
+    87: "むらさめの つゆもまだひぬ まきのはに きりたちのぼる あきのゆふぐれ",
+    88: "なりぬれば なりぬるよはの ねざめには かたぶくまでの つきをみしかな",
+    89: "たまのおの ふさにぬきとる ひまもなく ひとのことのは そでにとどめむ",
+    90: "みせばやな をじまのあまの そでだにも ぬれにぞぬれし いろはかはらず",
+    91: "きりぎりす なくやしもよの さむしろに ころもかたしき ひとりかもねむ",
+    92: "わがそでは しほひにみえぬ おきのいしの ひとこそしらね かわくまもなし",
+    93: "よのなかは つねにもがなな なぎさこぐ あまのをぶねの つなでかなしも",
+    94: "みよしのの やまのあきかぜ さよふけて ふるさとさむく ころもうつなり",
+    95: "おほけなく うきよのたみに おほふかな わがたつそまに すみぞめのそで",
+    96: "はなさそふ あらしのにはの ゆきならで ふりゆくものは わがみなりけり",
+    97: "こぬひとを まつほのうらの ゆふなぎに やくやもしほの みもこがれつつ",
+    98: "かぜそよぐ ならのおがはの ゆうぐれは みそぎぞなつの しるしなりける",
+    99: "ひともをし ひともうらめし あぢきなく よをおもふゆゑに ものおもふみは",
+    100:"ももしきや ふるきやしきの しのぶにも なほうらめしき うきよなりけり"
+  };
+
+  // ======= 作者データ（漢字の代表表記 + 表記ゆれの受け入れ別名） ===========
+  // 代表表記（AUTHORS[n]）か、同番号の ALIASES[n] 配列のどれかに完全一致したら正解。
+  // 空白は無視します（全角/半角）。
+  const AUTHORS = {
+    1:"天智天皇", 2:"持統天皇", 3:"柿本人麻呂", 4:"山部赤人", 5:"猿丸大夫",
+    6:"中納言家持", 7:"阿倍仲麻呂", 8:"喜撰法師", 9:"小野小町", 10:"蝉丸",
+    11:"参議篁", 12:"僧正遍昭", 13:"陽成院", 14:"河原左大臣", 15:"光孝天皇",
+    16:"中納言行平", 17:"在原業平朝臣", 18:"藤原敏行朝臣", 19:"伊勢", 20:"元良親王",
+    21:"素性法師", 22:"文屋康秀", 23:"大江千里", 24:"菅家", 25:"三条右大臣",
+    26:"貞信公", 27:"中納言兼輔", 28:"源宗于朝臣", 29:"凡河内躬恒", 30:"壬生忠岑",
+    31:"坂上是則", 32:"春道列樹", 33:"紀友則", 34:"藤原興風", 35:"紀貫之",
+    36:"清原深養父", 37:"文屋朝康", 38:"右近", 39:"参議等", 40:"平兼盛",
+    41:"壬生忠見", 42:"清原元輔", 43:"権中納言敦忠", 44:"中納言朝忠", 45:"謙徳公",
+    46:"曽禰好忠", 47:"恵慶法師", 48:"源重之", 49:"大中臣能宣朝臣", 50:"藤原義孝",
+    51:"藤原実方朝臣", 52:"藤原道信朝臣", 53:"右大将道綱母", 54:"儀同三司母", 55:"大納言公任",
+    56:"和泉式部", 57:"紫式部", 58:"大弐三位", 59:"赤染衛門", 60:"小式部内侍",
+    61:"伊勢大輔", 62:"清少納言", 63:"左京大夫道雅", 64:"権中納言定頼", 65:"相模",
+    66:"前大僧正行尊", 67:"周防内侍", 68:"三条院", 69:"能因法師", 70:"良暹法師",
+    71:"大納言経信", 72:"祐子内親王家紀伊", 73:"前中納言匡房", 74:"源俊頼朝臣", 75:"藤原基俊",
+    76:"法性寺入道前関白太政大臣", 77:"崇徳院", 78:"源兼昌", 79:"左京大夫顕輔", 80:"待賢門院堀河",
+    81:"後徳大寺左大臣", 82:"道因法師", 83:"皇太后宮大夫俊成", 84:"藤原清輔朝臣", 85:"俊恵法師",
+    86:"西行法師", 87:"寂蓮法師", 88:"皇嘉門院別当", 89:"式子内親王", 90:"殷富門院大輔",
+    91:"後京極摂政前太政大臣", 92:"二条院讃岐", 93:"鎌倉右大臣", 94:"参議雅経", 95:"前大僧正慈円",
+    96:"入道前太政大臣", 97:"権中納言定家", 98:"従二位家隆", 99:"後鳥羽院", 100:"順徳院"
+  };
+
+  const ALIASES = {
+    4:["山邊赤人"],
+    6:["大伴家持"],
+    7:["安倍仲麻呂","安倍仲麿","安倍仲麻呂","阿倍仲麿"],
+    11:["小野篁"],
+    13:["陽成天皇"],
+    14:["源融"],
+    16:["在原行平"],
+    17:["在原業平"],
+    18:["藤原敏行"],
+    24:["菅原道真"],
+    25:["藤原定方"],
+    26:["藤原忠平"],
+    27:["藤原兼輔"],
+    28:["源宗于"],
+    39:["源等"],
+    43:["藤原敦忠"],
+    44:["藤原朝忠"],
+    45:["藤原伊尹"],
+    49:["大中臣能宣"],
+    51:["藤原実方"],
+    52:["藤原道信"],
+    53:["藤原道綱母"],
+    54:["高階貴子"],
+    55:["藤原公任"],
+    58:["藤原賢子"],
+    63:["藤原道雅"],
+    64:["藤原定頼"],
+    66:["行尊","大僧正行尊"],
+    68:["三条天皇"],
+    70:["良暹"],
+    71:["源経信"],
+    72:["紀伊"],
+    73:["大江匡房"],
+    74:["源俊頼"],
+    76:["藤原忠通","法性寺入道前関白","前関白太政大臣"],
+    79:["藤原顕輔"],
+    81:["徳大寺実定"],
+    83:["藤原俊成"],
+    84:["藤原清輔"],
+    85:["俊恵"],
+    86:["西行"],
+    87:["寂蓮"],
+    88:["皇嘉門院 別当"],
+    90:["殷富門院の大輔"],
+    91:["九条良経","藤原良経"],
+    93:["源実朝"],
+    94:["飛鳥井雅経"],
+    95:["慈円"],
+    96:["西園寺公経"],
+    97:["藤原定家"],
+    98:["藤原家隆"],
+    99:["後鳥羽天皇"],
+    100:["順徳天皇"]
+  };
+
+  // ======= 状態 ==============================================================
+  let currentNumber = null;   // 現在の出題番号（1〜100）
+  let currentPart = null;     // 一部モードのとき 1..5
+
+  // ======= 要素参照 ==========================================================
+  const els = {
+    question: document.getElementById('question'),
+    hint: document.getElementById('hint'),
+    askBtn: document.getElementById('askBtn'),
+    nextBtn: document.getElementById('nextBtn'),
+    form: document.getElementById('form'),
+    answer: document.getElementById('answer'),
+    result: document.getElementById('result'),
+    correct: document.getElementById('correct'),
+    rangeFrom: document.getElementById('rangeFrom'),
+    rangeTo: document.getElementById('rangeTo'),
+    modeBox: document.getElementById('modeBox'),
+    partPicker: document.getElementById('partPicker'),
+    partSelect: document.getElementById('partSelect')
+  };
+
+  // ======= ユーティリティ =====================================================
+  // 歴史的仮名遣いの厳密一致向け（前後空白/全角空白/連続スペース/全角英数->半角を整理）
+  function normalizeForExactHistorical(str){
+    if(!str) return "";
+    let s = str.trim();
+    s = s.replace(/[！-～]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0)); // 全角英数→半角
+    s = s.replace(/　/g, ' ');    // 全角スペース→半角
+    s = s.replace(/\s+/g, ' ');       // 連続スペース→1
+    s = s.toLowerCase();               // 念のため
+    return s;
+  }
+
+  // 作者名の比較用（空白除去のみ。漢字そのものの一致で判定）
+  function normalizeAuthor(str){
+    if(!str) return "";
+    let s = str.trim();
+    s = s.replace(/　/g, ''); // 全角スペース除去
+    s = s.replace(/\s+/g, '');    // 半角スペース除去
+    return s;
+  }
+
+  function getMode(){
+    const r = els.modeBox.querySelector('input[name="mode"]:checked');
+    return r ? r.value : 'full';
+  }
+
+  function getSegments(n){
+    const raw = ANSWERS[n];
+    return raw ? raw.split(/\s+/) : null;
+  }
+
+  // 範囲内ランダム番号
+  function getRandomInRange(){
+    let from = parseInt(els.rangeFrom.value, 10);
+    let to = parseInt(els.rangeTo.value, 10);
+    if(isNaN(from)) from = 1;
+    if(isNaN(to)) to = 100;
+    from = Math.min(100, Math.max(1, from));
+    to   = Math.min(100, Math.max(1, to));
+    if(from > to){ const t = from; from = to; to = t; els.rangeFrom.value = from; els.rangeTo.value = to; }
+    const xs = [];
+    for(let n=from; n<=to; n++){ if(ANSWERS[n]) xs.push(n); }
+    if(xs.length === 0){ alert('指定範囲に有効な問題がありません。1〜100の中で設定してください。'); return null; }
+    return xs[Math.floor(Math.random()*xs.length)];
+  }
+
+  // 出題
+  function ask(){
+    const n = getRandomInRange();
+    if(n == null) return;
+    currentNumber = n;
+    currentPart = null;
+
+    const mode = getMode();
+    els.result.textContent = '';
+    els.correct.textContent = '';
+    els.hint.textContent = '';
+
+    if(mode === 'full'){
+      els.question.textContent = `第${n}首`;
+      els.answer.placeholder = '和歌の全文を入力';
+    } else if(mode === 'part'){
+      const segs = getSegments(n);
+      if(!segs || segs.length !== 5){ els.question.textContent = `第${n}首（データ未登録）`; return; }
+      let k = els.partSelect.value === 'rand' ? (1 + Math.floor(Math.random()*5)) : parseInt(els.partSelect.value,10);
+      if(!(1 <= k && k <= 5)) k = 1;
+      currentPart = k;
+      els.question.textContent = `第${n}首・第${k}句を入力（ひらがな・歴史的仮名遣い）`;
+      const hint = segs.map((s,i)=> i===k-1 ? '（　　？　　）' : s).join(' ');
+      els.hint.textContent = `${hint}`;
+    } else if(mode === 'author'){
+      els.question.textContent = `第${n}首・作者名を漢字で入力`;
+      els.hint.textContent = `${ANSWERS[n]}`;
+      els.answer.placeholder = '作者名を漢字で入力';
+    }
+
+    els.answer.value = '';
+    els.answer.focus();
+    els.nextBtn.disabled = true; // 判定後に有効化
+  }
+
+  // 判定
+  function judge(){
+    if(currentNumber == null) return;
+    const mode = getMode();
+
+    if(mode === 'full'){
+      const user = normalizeForExactHistorical(els.answer.value);
+      const expected = normalizeForExactHistorical(ANSWERS[currentNumber]);
+      if(user && user === expected){ els.result.textContent = '正解！'; els.result.className='ok'; }
+      else { els.result.textContent = '不正解…'; els.result.className='ng'; els.correct.textContent = `正答：${ANSWERS[currentNumber]}`; }
+    }
+    else if(mode === 'part'){
+      const segs = getSegments(currentNumber);
+      if(!segs) { els.result.textContent = 'この番号の正答が未登録です。ANSWERSを確認してください。'; return; }
+      const k = currentPart || 1;
+      const user = normalizeForExactHistorical(els.answer.value);
+      const expected = normalizeForExactHistorical(segs[k-1]);
+      if(user && user === expected){ els.result.textContent = '正解！'; els.result.className='ok'; }
+      else { els.result.textContent = '不正解…'; els.result.className='ng'; els.correct.textContent = `正答（第${k}句）：${segs[k-1]}`; }
+    }
+    else if(mode === 'author'){
+      const user = normalizeAuthor(els.answer.value);
+      const expected = normalizeAuthor(AUTHORS[currentNumber] || '');
+      const aliasList = (ALIASES[currentNumber] || []).map(normalizeAuthor);
+      const ok = (user && (user === expected || aliasList.includes(user)));
+      if(ok){ els.result.textContent = '正解！'; els.result.className='ok'; }
+      else {
+        const aliasesTxt = (ALIASES[currentNumber] && ALIASES[currentNumber].length) ? `（別表記：${ALIASES[currentNumber].join('／')}）` : '';
+        els.result.textContent = '不正解…'; els.result.className='ng';
+        els.correct.textContent = `正答：${AUTHORS[currentNumber]}${aliasesTxt}`;
+      }
+    }
+
+    els.nextBtn.disabled = false;
+  }
+
+  // ======= イベント ===========================================================
+  els.askBtn.addEventListener('click', ask);
+  els.nextBtn.addEventListener('click', ask);
+  els.form.addEventListener('submit', (e)=>{ e.preventDefault(); judge(); });
+
+  els.modeBox.addEventListener('change', ()=>{
+    const m = getMode();
+    els.partPicker.style.display = (m === 'part') ? 'inline-block' : 'none';
+    // プレースホルダ更新
+    if(m === 'full')      els.answer.placeholder = '和歌の全文を入力';
+    else if(m === 'part') els.answer.placeholder = '空欄に入る句を入力';
+    else if(m === 'author') els.answer.placeholder = '作者名を漢字で入力';
+  });
+  </script>
+</body>
+</html>
